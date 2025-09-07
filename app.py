@@ -132,4 +132,36 @@ if st.button("Summarize") and url:
 
     if metadata:
         st.subheader(metadata["title"])
-        st.write(f"Channel: {metadata['chann]()
+        st.write(f"Channel: {metadata['channel']}")
+        st.write(f"Length: {metadata['duration']}")
+    else:
+        st.warning("⚠️ Could not fetch video metadata.")
+
+    # Get transcript or fallback to Whisper
+    transcript = fetch_transcript(video_id)
+
+    if not transcript:
+        st.error("Transcript not available for this video, and Whisper fallback not yet implemented in this version.")
+        st.stop()
+
+    # Summarize in chunks
+    st.info("Processing transcript into chunks and summarizing...")
+    chunks = chunk_transcript(transcript)
+    all_summaries = []
+    for timestamp, chunk in chunks:
+        summary = summarize_chunk(chunk, timestamp)
+        all_summaries.append(summary)
+
+    final_summary = "\n\n".join(all_summaries)
+
+    # Display
+    st.subheader("📝 Summary")
+    st.text_area("Summary Output", final_summary, height=400)
+
+    # PDF Export
+    pdf_file = export_pdf(final_summary, metadata["title"] if metadata else "summary")
+    with open(pdf_file, "rb") as f:
+        st.download_button("📥 Download PDF", f, file_name="summary.pdf")
+
+    # Copy button
+    st.code(final_summary)
