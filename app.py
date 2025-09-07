@@ -1,25 +1,21 @@
 import streamlit as st
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
-from pytube import YouTube
 import openai
 import tempfile
 import os
-import subprocess
 from fpdf import FPDF
 from datetime import timedelta
 from dotenv import load_dotenv
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="urllib3")
-
-
-# Load .env
-load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+from googleapiclient.discovery import build
+import isodate
 
 # ---------------------------
 # CONFIG
 # ---------------------------
-##openai.api_key = os.getenv("OPENAI_API_KEY")
+load_dotenv()  # load keys from .env
+
+openai.api_key = os.getenv("OPENAI_API_KEY")
+YOUTUBE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 st.set_page_config(page_title="YouTube Summarizer", layout="wide")
 
@@ -35,6 +31,29 @@ def get_video_id(url: str) -> str:
         return url.split("youtu.be/")[-1].split("?")[0]
     return url
 
+def get_video_metadata(video_id: str):
+    """Fetch video title, channel, and duration using YouTube Data API v3."""
+    youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+    request = youtube.videos().list(
+        part="snippet,contentDetails",
+        id=video_id
+    )
+    response = request.execute()
+    if not response["items"]:
+        return None
+    
+    item = response["items"][0]
+    title = item["snippet"]["title"]
+    channel = item["snippet"]["channelTitle"]
+    duration_iso = item["contentDetails"]["duration"]  # e.g., PT1H3M22S
+    duration = isodate.parse_duration(duration_iso).total_seconds()
+
+    return {
+        "title": title,
+        "channel": channel,
+        "duration": str(timedelta(seconds=int(duration)))
+    }
+
 def fetch_transcript(video_id: str):
     """Try to fetch transcript from YouTube API."""
     try:
@@ -46,15 +65,9 @@ def fetch_transcript(video_id: str):
         st.warning(f"Transcript not available: {e}")
         return None
 
-def download_audio(video_url: str, filename: str):
-    """Download audio from YouTube video."""
-    yt = YouTube(video_url)
-    stream = yt.streams.filter(only_audio=True).first()
-    stream.download(filename=filename)
-
 def transcribe_audio_whisper(filepath: str):
     """Transcribe audio using Whisper."""
-    result = openai.Audio.transcriptions.create(
+    result = openai.audio.transcriptions.create(
         model="whisper-1",
         file=open(filepath, "rb")
     )
@@ -87,13 +100,13 @@ def summarize_chunk(text, timestamp):
     {text}
     """
 
-    response = openai.ChatCompletion.create(
+    response = openai.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.5
     )
 
-    return response["choices"][0]["message"]["content"]
+    return response.choices[0].message.content
 
 def export_pdf(summary_text, title="YouTube Summary"):
     """Export summary to a PDF file."""
@@ -115,40 +128,8 @@ st.write("Paste a YouTube link to get transcript + AI summary with timestamps.")
 url = st.text_input("Enter YouTube URL")
 if st.button("Summarize") and url:
     video_id = get_video_id(url)
-    yt = YouTube(url)
-    st.subheader(yt.title)
-    st.write(f"Channel: {yt.author}")
-    st.write(f"Length: {str(timedelta(seconds=yt.length))}")
+    metadata = get_video_metadata(video_id)
 
-    # Get transcript or fallback to Whisper
-    transcript = fetch_transcript(video_id)
-
-    if not transcript:
-        st.info("Transcript not available. Downloading audio for Whisper transcription...")
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-            download_audio(url, tmp.name)
-            full_text = transcribe_audio_whisper(tmp.name)
-            transcript = [{"start": 0, "text": full_text}]
-
-    # Summarize in chunks
-    st.info("Processing transcript into chunks and summarizing...")
-    chunks = chunk_transcript(transcript)
-    all_summaries = []
-    for timestamp, chunk in chunks:
-        summary = summarize_chunk(chunk, timestamp)
-        all_summaries.append(summary)
-
-    final_summary = "\n\n".join(all_summaries)
-
-    # Display
-    st.subheader("📝 Summary")
-    st.text_area("Summary Output", final_summary, height=400)
-
-    # PDF Export
-    pdf_file = export_pdf(final_summary, yt.title)
-    with open(pdf_file, "rb") as f:
-        st.download_button("📥 Download PDF", f, file_name="summary.pdf")
-
-    # Copy button
-    st.code(final_summary)
-
+    if metadata:
+        st.subheader(metadata["title"])
+        st.write(f"Channel: {metadata['chann]()
