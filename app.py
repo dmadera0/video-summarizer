@@ -8,6 +8,9 @@ import subprocess
 from fpdf import FPDF
 from datetime import timedelta
 from dotenv import load_dotenv
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="urllib3")
+
 
 # Load .env
 load_dotenv()
