@@ -8,6 +8,7 @@ from datetime import timedelta
 from dotenv import load_dotenv
 from googleapiclient.discovery import build
 import isodate
+import yt_dlp
 
 # ---------------------------
 # CONFIG
@@ -65,13 +66,24 @@ def fetch_transcript(video_id: str):
         st.warning(f"Transcript not available: {e}")
         return None
 
+def download_audio(video_url: str, filename: str):
+    """Download audio from YouTube using yt-dlp."""
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "outtmpl": filename,
+        "quiet": True,
+        "noplaylist": True
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([video_url])
+
 def transcribe_audio_whisper(filepath: str):
-    """Transcribe audio using Whisper."""
+    """Transcribe audio using Whisper (OpenAI API)."""
     result = openai.audio.transcriptions.create(
         model="whisper-1",
         file=open(filepath, "rb")
     )
-    return result["text"]
+    return result.text
 
 def chunk_transcript(transcript, chunk_size=500):
     """Split transcript into smaller chunks with timestamps."""
@@ -141,8 +153,11 @@ if st.button("Summarize") and url:
     transcript = fetch_transcript(video_id)
 
     if not transcript:
-        st.error("Transcript not available for this video, and Whisper fallback not yet implemented in this version.")
-        st.stop()
+        st.info("Transcript not available. Downloading audio for Whisper transcription...")
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
+            download_audio(url, tmp.name)
+            full_text = transcribe_audio_whisper(tmp.name)
+            transcript = [{"start": 0, "text": full_text}]
 
     # Summarize in chunks
     st.info("Processing transcript into chunks and summarizing...")
