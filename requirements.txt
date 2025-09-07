@@ -1,0 +1,8 @@
+streamlit
+openai
+youtube-transcript-api
+pytube
+fpdf
+# Optional: for local Whisper use
+openai-whisper
+torch

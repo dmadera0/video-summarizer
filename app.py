@@ -7,11 +7,16 @@ import os
 import subprocess
 from fpdf import FPDF
 from datetime import timedelta
+from dotenv import load_dotenv
+
+# Load .env
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # ---------------------------
 # CONFIG
 # ---------------------------
-openai.api_key = os.getenv("OPENAI_API_KEY")
+##openai.api_key = os.getenv("OPENAI_API_KEY")
 
 st.set_page_config(page_title="YouTube Summarizer", layout="wide")
 
