@@ -27,10 +27,16 @@ st.set_page_config(page_title="YouTube Summarizer", layout="wide")
 # ---------------------------
 
 def load_css(file_name: str):
-    """Load custom CSS from a file into Streamlit."""
-    with open(file_name) as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    import pathlib
+    css_path = pathlib.Path(file_name)
+    if css_path.exists():
+        with open(css_path) as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    else:
+        st.error(f"❌ CSS file not found: {file_name}")
 
+# Load styling
+load_css("style.css")
 
 # ---------------------------
 # HELPERS
@@ -46,7 +52,7 @@ def get_video_id(url: str) -> str:
 
 def get_video_metadata(video_id: str):
     """Fetch video title, channel, and duration using YouTube Data API v3."""
-    youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+    youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY, cache_discovery=False)
     request = youtube.videos().list(
         part="snippet,contentDetails",
         id=video_id
@@ -58,7 +64,7 @@ def get_video_metadata(video_id: str):
     item = response["items"][0]
     title = item["snippet"]["title"]
     channel = item["snippet"]["channelTitle"]
-    duration_iso = item["contentDetails"]["duration"]  # e.g., PT1H3M22S
+    duration_iso = item["contentDetails"]["duration"]
     duration = isodate.parse_duration(duration_iso).total_seconds()
 
     return {
@@ -75,14 +81,15 @@ def fetch_transcript(video_id: str):
     except TranscriptsDisabled:
         return None
     except Exception as e:
-        st.warning(f"Transcript not available: {e}")
+        # Log error silently instead of showing warning in UI
+        print(f"[DEBUG] Transcript not available: {e}")
         return None
 
 def download_audio(video_url: str, filename: str):
     """Download audio from YouTube as MP3 using yt-dlp + ffmpeg."""
     ydl_opts = {
         "format": "bestaudio/best",
-        "outtmpl": filename.replace(".mp3", ""),  # yt-dlp will add .mp3
+        "outtmpl": filename.replace(".mp3", ""),
         "quiet": True,
         "noplaylist": True,
         "postprocessors": [{
@@ -164,53 +171,64 @@ if st.button("Summarize") and url:
     video_id = get_video_id(url)
     metadata = get_video_metadata(video_id)
 
-    # Show video metadata
-    if metadata:
-        st.subheader(metadata["title"])
-        st.write(f"Channel: {metadata['channel']}")
-        st.write(f"Length: {metadata['duration']}")
-    else:
-        st.warning("⚠️ Could not fetch video metadata.")
-
     # Try to get transcript (YouTube first, then Whisper fallback)
     transcript = fetch_transcript(video_id)
 
     if not transcript:
-        st.info("Transcript not available. Downloading audio for Whisper transcription...")
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
+        with st.spinner("🎙️ Transcribing audio with Whisper..."):
+         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
             audio_path = download_audio(url, tmp.name)
             full_text = transcribe_audio_whisper(audio_path)
             transcript = [{"start": 0, "text": full_text}]
 
-    # ✅ Show full transcript
-    if transcript:
-        st.subheader("📜 Full Transcript")
-        with st.expander("Click to view transcript"):
-            if isinstance(transcript, list) and "text" in transcript[0]:
-                transcript_text = " ".join([entry["text"] for entry in transcript])
-            else:
-                transcript_text = transcript[0]["text"] if isinstance(transcript, list) else str(transcript)
-
-            st.text_area("Transcript", transcript_text, height=300)
 
     # Summarize transcript
-    st.info("Processing transcript into chunks and summarizing...")
-    chunks = chunk_transcript(transcript)
-    all_summaries = []
-    for timestamp, chunk in chunks:
-        summary = summarize_chunk(chunk, timestamp)
-        all_summaries.append(summary)
+    with st.spinner("📝 Processing transcript into chunks and generating summary..."):
+        chunks = chunk_transcript(transcript)
+        all_summaries = []
+        for timestamp, chunk in chunks:
+            summary = summarize_chunk(chunk, timestamp)
+            all_summaries.append(summary)
 
     final_summary = "\n\n".join(all_summaries)
 
-    # Show summary
-    st.subheader("📝 Summary")
-    st.text_area("Summary Output", final_summary, height=400)
+    # ---------------------------
+    # TWO-COLUMN LAYOUT
+    # ---------------------------
+    col1, col2 = st.columns([1, 1])
 
-    # PDF Export
-    pdf_file = export_pdf(final_summary, metadata["title"] if metadata else "summary")
-    with open(pdf_file, "rb") as f:
-        st.download_button("📥 Download PDF", f, file_name="summary.pdf")
+    # LEFT: Video metadata + transcript
+    with col1:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        if metadata:
+            st.subheader("🎬 Video Info")
+            st.write(f"**Title:** {metadata['title']}")
+            st.write(f"**Channel:** {metadata['channel']}")
+            st.write(f"**Length:** {metadata['duration']}")
+        else:
+            st.warning("⚠️ Could not fetch video metadata.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    # Copyable block
-    st.code(final_summary)
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        if transcript:
+            st.subheader("📜 Full Transcript")
+            with st.expander("Click to view transcript", expanded=False):
+                if isinstance(transcript, list) and "text" in transcript[0]:
+                    transcript_text = " ".join([entry["text"] for entry in transcript])
+                else:
+                    transcript_text = transcript[0]["text"] if isinstance(transcript, list) else str(transcript)
+                st.text_area("Transcript", transcript_text, height=400)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # RIGHT: Summary + export options
+    with col2:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.subheader("📝 Summary")
+        st.text_area("Summary Output", final_summary, height=400)
+
+        pdf_file = export_pdf(final_summary, metadata["title"] if metadata else "summary")
+        with open(pdf_file, "rb") as f:
+            st.download_button("📥 Download PDF", f, file_name="summary.pdf")
+
+        st.code(final_summary)
+        st.markdown('</div>', unsafe_allow_html=True)

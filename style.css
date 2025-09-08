@@ -1,5 +1,11 @@
 /* style.css */
 
+/* DEBUG TEST */
+/* .stApp {
+    background-color: #ffebee !important; /* Light red */
+ 
+
+
 /* Main app background */
 .stApp {
     background-color: #f9fafb;
@@ -57,4 +63,19 @@ h1, h2, h3 {
 }
 .stDownloadButton>button:hover {
     background-color: #047857;
+}
+
+/* Card container */
+.card {
+    background: #ffffff;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+/* Section headers inside cards */
+.card h2, .card h3 {
+    margin-top: 0;
+    color: #1f2937;
 }
