@@ -67,23 +67,31 @@ def fetch_transcript(video_id: str):
         return None
 
 def download_audio(video_url: str, filename: str):
-    """Download audio from YouTube using yt-dlp."""
+    """Download audio from YouTube as MP3 using yt-dlp."""
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": filename,
         "quiet": True,
-        "noplaylist": True
+        "noplaylist": True,
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "192",
+        }],
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([video_url])
 
+
 def transcribe_audio_whisper(filepath: str):
     """Transcribe audio using Whisper (OpenAI API)."""
-    result = openai.audio.transcriptions.create(
-        model="whisper-1",
-        file=open(filepath, "rb")
-    )
+    with open(filepath, "rb") as audio_file:
+        result = openai.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file
+        )
     return result.text
+
 
 def chunk_transcript(transcript, chunk_size=500):
     """Split transcript into smaller chunks with timestamps."""
@@ -158,6 +166,7 @@ if st.button("Summarize") and url:
             download_audio(url, tmp.name)
             full_text = transcribe_audio_whisper(tmp.name)
             transcript = [{"start": 0, "text": full_text}]
+
 
     # Summarize in chunks
     st.info("Processing transcript into chunks and summarizing...")

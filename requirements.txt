@@ -6,3 +6,21 @@ fpdf
 # Optional: for local Whisper use
 openai-whisper
 torch
+
+
+# Core app
+streamlit>=1.37.0
+openai>=1.42.0
+python-dotenv>=1.0.1
+
+# YouTube + transcripts
+google-api-python-client>=2.151.0
+youtube-transcript-api>=0.6.2
+yt-dlp>=2024.9.27
+
+# Audio handling
+isodate>=0.6.1
+ffmpeg-python>=0.2.0  # wrapper, requires ffmpeg installed on system
+
+# PDF export
+fpdf2>=2.8.1
