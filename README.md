@@ -1,5 +1,5 @@
 # video-summarizer
 
-to run 
+to run --- ./run.sh
 
-streamlit run app.py
+# streamlit run app.py

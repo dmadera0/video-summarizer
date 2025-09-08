@@ -67,10 +67,10 @@ def fetch_transcript(video_id: str):
         return None
 
 def download_audio(video_url: str, filename: str):
-    """Download audio from YouTube as MP3 using yt-dlp."""
+    """Download audio from YouTube as MP3 using yt-dlp + ffmpeg."""
     ydl_opts = {
         "format": "bestaudio/best",
-        "outtmpl": filename,
+        "outtmpl": filename.replace(".mp3", ""),  # yt-dlp will add .mp3
         "quiet": True,
         "noplaylist": True,
         "postprocessors": [{
@@ -81,6 +81,12 @@ def download_audio(video_url: str, filename: str):
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([video_url])
+
+    # Ensure returned filename ends with .mp3
+    if not filename.endswith(".mp3"):
+        filename = filename + ".mp3"
+
+    return filename
 
 
 def transcribe_audio_whisper(filepath: str):
@@ -163,9 +169,10 @@ if st.button("Summarize") and url:
     if not transcript:
         st.info("Transcript not available. Downloading audio for Whisper transcription...")
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-            download_audio(url, tmp.name)
-            full_text = transcribe_audio_whisper(tmp.name)
+            audio_path = download_audio(url, tmp.name)
+            full_text = transcribe_audio_whisper(audio_path)
             transcript = [{"start": 0, "text": full_text}]
+
 
 
     # Summarize in chunks
