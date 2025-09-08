@@ -1,0 +1,60 @@
+/* style.css */
+
+/* Main app background */
+.stApp {
+    background-color: #f9fafb;
+    font-family: 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Titles */
+h1, h2, h3 {
+    color: #1f2937;
+}
+
+/* Input box */
+.stTextInput>div>div>input {
+    border-radius: 8px;
+    border: 1px solid #d1d5db;
+    padding: 10px;
+    font-size: 16px;
+}
+
+/* Buttons */
+.stButton>button {
+    background-color: #2563eb;
+    color: white;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 16px;
+    border: none;
+}
+.stButton>button:hover {
+    background-color: #1e40af;
+    color: white;
+}
+
+/* Text areas */
+.stTextArea textarea {
+    border-radius: 8px;
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+/* Expander */
+.streamlit-expanderHeader {
+    font-weight: bold;
+    color: #2563eb;
+}
+
+/* Download button */
+.stDownloadButton>button {
+    background-color: #059669;
+    color: white;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 16px;
+    border: none;
+}
+.stDownloadButton>button:hover {
+    background-color: #047857;
+}

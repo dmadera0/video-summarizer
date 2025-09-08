@@ -23,6 +23,16 @@ YOUTUBE_API_KEY = os.getenv("GOOGLE_API_KEY")
 st.set_page_config(page_title="YouTube Summarizer", layout="wide")
 
 # ---------------------------
+# STYLES
+# ---------------------------
+
+def load_css(file_name: str):
+    """Load custom CSS from a file into Streamlit."""
+    with open(file_name) as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+
+# ---------------------------
 # HELPERS
 # ---------------------------
 
