@@ -13,11 +13,13 @@ import yt_dlp
 # ---------------------------
 # CONFIG
 # ---------------------------
-load_dotenv()  # load keys from .env
+# Load API keys from .env file
+load_dotenv()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 YOUTUBE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
+# Set up Streamlit page config
 st.set_page_config(page_title="YouTube Summarizer", layout="wide")
 
 # ---------------------------
@@ -82,12 +84,9 @@ def download_audio(video_url: str, filename: str):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([video_url])
 
-    # Ensure returned filename ends with .mp3
     if not filename.endswith(".mp3"):
         filename = filename + ".mp3"
-
     return filename
-
 
 def transcribe_audio_whisper(filepath: str):
     """Transcribe audio using Whisper (OpenAI API)."""
@@ -98,14 +97,13 @@ def transcribe_audio_whisper(filepath: str):
         )
     return result.text
 
-
 def chunk_transcript(transcript, chunk_size=500):
     """Split transcript into smaller chunks with timestamps."""
     chunks, current_chunk, current_time = [], [], None
     for entry in transcript:
         if not current_time:
-            current_time = entry['start']
-        current_chunk.append(entry['text'])
+            current_time = entry.get("start", 0)
+        current_chunk.append(entry["text"])
         if len(" ".join(current_chunk)) > chunk_size:
             chunks.append((current_time, " ".join(current_chunk)))
             current_chunk, current_time = [], None
@@ -114,7 +112,7 @@ def chunk_transcript(transcript, chunk_size=500):
     return chunks
 
 def summarize_chunk(text, timestamp):
-    """Summarize a single transcript chunk."""
+    """Summarize a single transcript chunk using OpenAI GPT model."""
     prompt = f"""
     Summarize the following YouTube transcript section. 
     Provide:
@@ -156,6 +154,7 @@ if st.button("Summarize") and url:
     video_id = get_video_id(url)
     metadata = get_video_metadata(video_id)
 
+    # Show video metadata
     if metadata:
         st.subheader(metadata["title"])
         st.write(f"Channel: {metadata['channel']}")
@@ -163,7 +162,7 @@ if st.button("Summarize") and url:
     else:
         st.warning("⚠️ Could not fetch video metadata.")
 
-    # Get transcript or fallback to Whisper
+    # Try to get transcript (YouTube first, then Whisper fallback)
     transcript = fetch_transcript(video_id)
 
     if not transcript:
@@ -173,9 +172,18 @@ if st.button("Summarize") and url:
             full_text = transcribe_audio_whisper(audio_path)
             transcript = [{"start": 0, "text": full_text}]
 
+    # ✅ Show full transcript
+    if transcript:
+        st.subheader("📜 Full Transcript")
+        with st.expander("Click to view transcript"):
+            if isinstance(transcript, list) and "text" in transcript[0]:
+                transcript_text = " ".join([entry["text"] for entry in transcript])
+            else:
+                transcript_text = transcript[0]["text"] if isinstance(transcript, list) else str(transcript)
 
+            st.text_area("Transcript", transcript_text, height=300)
 
-    # Summarize in chunks
+    # Summarize transcript
     st.info("Processing transcript into chunks and summarizing...")
     chunks = chunk_transcript(transcript)
     all_summaries = []
@@ -185,7 +193,7 @@ if st.button("Summarize") and url:
 
     final_summary = "\n\n".join(all_summaries)
 
-    # Display
+    # Show summary
     st.subheader("📝 Summary")
     st.text_area("Summary Output", final_summary, height=400)
 
@@ -194,5 +202,5 @@ if st.button("Summarize") and url:
     with open(pdf_file, "rb") as f:
         st.download_button("📥 Download PDF", f, file_name="summary.pdf")
 
-    # Copy button
+    # Copyable block
     st.code(final_summary)
