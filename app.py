@@ -179,8 +179,17 @@ def process_video(url: str):
 # ---------------------------
 # STREAMLIT UI
 # ---------------------------
-st.title("🎥 YouTube Summarizer")
-st.write("Paste a YouTube link to get transcript + AI summary with timestamps.")
+# Top bar with centered title
+st.markdown("""
+    <div class="top-bar">
+        <h1>🎥 YouTube Summarizer</h1>
+    </div>
+""", unsafe_allow_html=True)
+
+# Subtitle under the bar
+st.markdown("<p style='text-align: center; font-size: 1.1rem; color: #606060;'>Paste a YouTube link to get transcript + AI summary with timestamps.</p>", unsafe_allow_html=True)
+
+
 
 url = st.text_input("Enter YouTube URL")
 if st.button("Summarize") and url:
