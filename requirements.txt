@@ -24,3 +24,11 @@ ffmpeg-python>=0.2.0  # wrapper, requires ffmpeg installed on system
 
 # PDF export
 fpdf2>=2.8.1
+
+psycopg2-binary
+sqlalchemy
+
+
+
+
+

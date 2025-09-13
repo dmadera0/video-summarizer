@@ -12,45 +12,143 @@ from dotenv import load_dotenv
 from googleapiclient.discovery import build
 import isodate
 import yt_dlp
+from sqlalchemy import create_engine, Column, Integer, String, Text, TIMESTAMP, func
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 # ---------------------------
 # CONFIG
 # ---------------------------
-# Load API keys from .env file
 load_dotenv()
+
 openai.api_key = os.getenv("OPENAI_API_KEY")
 YOUTUBE_API_KEY = os.getenv("GOOGLE_API_KEY")
+DATABASE_URL = os.getenv("DATABASE_URL")  # e.g. postgresql+psycopg2://user:pass@localhost/db
 
-# Streamlit page setup
+# Streamlit setup
 st.set_page_config(page_title="YouTube Summarizer", layout="wide")
 
 # ---------------------------
 # STYLES
 # ---------------------------
 def load_css(file_name: str):
-    """Inject custom CSS into the Streamlit app."""
     import pathlib
     css_path = pathlib.Path(file_name)
     if css_path.exists():
         with open(css_path) as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-# Load external CSS file
 load_css("style.css")
 
 # ---------------------------
-# HELPERS (basic utilities)
+# DATABASE SETUP
+# ---------------------------
+engine = create_engine(DATABASE_URL, echo=False)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+class Summary(Base):
+    __tablename__ = "summaries"
+    id = Column(Integer, primary_key=True, index=True)
+    video_id = Column(String, unique=True, index=True, nullable=False)
+    title = Column(String)
+    channel = Column(String)
+    duration = Column(String)
+    transcript = Column(Text)
+    summary = Column(Text)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+def init_db():
+    Base.metadata.create_all(bind=engine)
+
+def save_summary(video_id, metadata, transcript, summary):
+    session = SessionLocal()
+    try:
+        existing = session.query(Summary).filter_by(video_id=video_id).first()
+        transcript_text = (
+            " ".join([t["text"] for t in transcript])
+            if isinstance(transcript, list) else str(transcript)
+        )
+        if existing:
+            existing.title = metadata.get("title", "")
+            existing.channel = metadata.get("channel", "")
+            existing.duration = metadata.get("duration", "")
+            existing.transcript = transcript_text
+            existing.summary = summary
+        else:
+            new_entry = Summary(
+                video_id=video_id,
+                title=metadata.get("title", ""),
+                channel=metadata.get("channel", ""),
+                duration=metadata.get("duration", ""),
+                transcript=transcript_text,
+                summary=summary,
+            )
+            session.add(new_entry)
+        session.commit()
+    finally:
+        session.close()
+
+def get_summary(video_id):
+    session = SessionLocal()
+    try:
+        record = session.query(Summary).filter_by(video_id=video_id).first()
+        if record:
+            return {
+                "title": record.title,
+                "channel": record.channel,
+                "duration": record.duration,
+                "transcript": record.transcript,
+                "summary": record.summary,
+            }
+        return None
+    finally:
+        session.close()
+
+def list_summaries(limit=20):
+    session = SessionLocal()
+    try:
+        return (
+            session.query(Summary)
+            .order_by(Summary.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+    finally:
+        session.close()
+
+# ---------------------------
+# HELPERS
 # ---------------------------
 def get_video_id(url: str) -> str:
-    """Extract video ID from a YouTube URL."""
     if "watch?v=" in url:
         return url.split("watch?v=")[-1].split("&")[0]
     elif "youtu.be/" in url:
         return url.split("youtu.be/")[-1].split("?")[0]
     return url
 
+def get_video_metadata(video_id: str):
+    youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY, cache_discovery=False)
+    request = youtube.videos().list(part="snippet,contentDetails", id=video_id)
+    response = request.execute()
+    if not response["items"]:
+        return None
+    item = response["items"][0]
+    title = item["snippet"]["title"]
+    channel = item["snippet"]["channelTitle"]
+    duration_iso = item["contentDetails"]["duration"]
+    duration = isodate.parse_duration(duration_iso).total_seconds()
+    return {"title": title, "channel": channel, "duration": str(timedelta(seconds=int(duration)))}
+
+def fetch_transcript(video_id: str):
+    try:
+        return YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
+    except TranscriptsDisabled:
+        return None
+    except Exception as e:
+        print(f"[DEBUG] Transcript not available: {e}")
+        return None
+
 def download_audio(video_url: str, filename: str):
-    """Download audio from YouTube as MP3 using yt-dlp + ffmpeg."""
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": filename.replace(".mp3", ""),
@@ -64,22 +162,14 @@ def download_audio(video_url: str, filename: str):
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([video_url])
-
-    if not filename.endswith(".mp3"):
-        filename = filename + ".mp3"
-    return filename
+    return filename if filename.endswith(".mp3") else filename + ".mp3"
 
 def transcribe_audio_whisper(filepath: str):
-    """Transcribe audio file using OpenAI Whisper."""
     with open(filepath, "rb") as audio_file:
-        result = openai.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio_file
-        )
+        result = openai.audio.transcriptions.create(model="whisper-1", file=audio_file)
     return result.text
 
 def chunk_transcript(transcript, chunk_size=500):
-    """Split transcript into chunks with timestamps."""
     chunks, current_chunk, current_time = [], [], None
     for entry in transcript:
         if not current_time:
@@ -93,7 +183,6 @@ def chunk_transcript(transcript, chunk_size=500):
     return chunks
 
 def summarize_chunk(text, timestamp):
-    """Summarize a transcript chunk using GPT."""
     prompt = f"""
     Summarize the following YouTube transcript section. 
     Provide:
@@ -112,7 +201,6 @@ def summarize_chunk(text, timestamp):
     return response.choices[0].message.content
 
 def export_pdf(summary_text, title="YouTube Summary"):
-    """Export summary to a PDF file."""
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
@@ -122,46 +210,21 @@ def export_pdf(summary_text, title="YouTube Summary"):
     return temp_path
 
 # ---------------------------
-# CACHED HELPERS (API calls)
+# PROCESS VIDEO (PIPELINE)
 # ---------------------------
 @st.cache_data(show_spinner=False)
-def get_video_metadata(video_id: str):
-    """Fetch video metadata (title, channel, duration)."""
-    youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY, cache_discovery=False)
-    request = youtube.videos().list(part="snippet,contentDetails", id=video_id)
-    response = request.execute()
-    if not response["items"]:
-        return None
-    item = response["items"][0]
-    duration_iso = item["contentDetails"]["duration"]
-    duration = isodate.parse_duration(duration_iso).total_seconds()
-    return {
-        "title": item["snippet"]["title"],
-        "channel": item["snippet"]["channelTitle"],
-        "duration": str(timedelta(seconds=int(duration)))
-    }
-
-@st.cache_data(show_spinner=False)
-def fetch_transcript(video_id: str):
-    """Try to fetch transcript directly from YouTube."""
-    try:
-        return YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
-    except TranscriptsDisabled:
-        return None
-    except Exception as e:
-        print(f"[DEBUG] Transcript not available: {e}")
-        return None
-
-# ---------------------------
-# FULL PIPELINE (CACHED)
-# ---------------------------
-@st.cache_data(show_spinner=True)
 def process_video(url: str):
-    """End-to-end pipeline: metadata → transcript → summary (cached)."""
     video_id = get_video_id(url)
-    metadata = get_video_metadata(video_id)
 
-    # Transcript
+    cached = get_summary(video_id)
+    if cached:
+        return (
+            {"title": cached["title"], "channel": cached["channel"], "duration": cached["duration"]},
+            [{"start": 0, "text": cached["transcript"]}],
+            cached["summary"]
+        )
+
+    metadata = get_video_metadata(video_id)
     transcript = fetch_transcript(video_id)
     if not transcript:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
@@ -169,54 +232,55 @@ def process_video(url: str):
             full_text = transcribe_audio_whisper(audio_path)
             transcript = [{"start": 0, "text": full_text}]
 
-    # Summarization
     chunks = chunk_transcript(transcript)
-    summaries = [summarize_chunk(chunk, ts) for ts, chunk in chunks]
-    final_summary = "\n\n".join(summaries)
+    all_summaries = [summarize_chunk(chunk, ts) for ts, chunk in chunks]
+    final_summary = "\n\n".join(all_summaries)
 
+    save_summary(video_id, metadata, transcript, final_summary)
     return metadata, transcript, final_summary
 
 # ---------------------------
 # STREAMLIT UI
 # ---------------------------
-# Top bar with centered title
-st.markdown("""
-    <div class="top-bar">
-        <h1>🎥 YouTube Summarizer</h1>
-    </div>
-""", unsafe_allow_html=True)
+st.markdown('<div class="top-bar"> </div>', unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>🎥 YouTube Summarizer</h1>", unsafe_allow_html=True)
+st.write("<p style='text-align: center;'>Paste a YouTube link to get transcript + AI summary with timestamps.</p>", unsafe_allow_html=True)
 
-# Subtitle under the bar
-st.markdown("<p style='text-align: center; font-size: 1.1rem; color: #606060;'>Paste a YouTube link to get transcript + AI summary with timestamps.</p>", unsafe_allow_html=True)
+tab1, tab2 = st.tabs(["▶️ Summarize", "📚 History"])
 
+# --- Tab 1: Summarize ---
+with tab1:
+    url = st.text_input("Enter YouTube URL")
+    if st.button("Summarize") and url:
+        with st.spinner("⚡ Processing video..."):
+            metadata, transcript, final_summary = process_video(url)
 
-
-url = st.text_input("Enter YouTube URL")
-if st.button("Summarize") and url:
-    with st.spinner("⚡ Processing video..."):
-        metadata, transcript, final_summary = process_video(url)
-
-    # Two-column layout
-    col1, col2 = st.columns([1, 1])
-
-    # LEFT: Video Info + Transcript
-    with col1:
-        if metadata:
+        col1, col2 = st.columns([1, 1])
+        with col1:
             st.subheader("🎬 Video Info")
             st.write(f"**Title:** {metadata['title']}")
             st.write(f"**Channel:** {metadata['channel']}")
             st.write(f"**Length:** {metadata['duration']}")
-        if transcript:
             st.subheader("📜 Full Transcript")
             with st.expander("Click to view transcript", expanded=False):
-                transcript_text = " ".join([entry["text"] for entry in transcript])
+                transcript_text = " ".join([t["text"] for t in transcript])
                 st.text_area("Transcript", transcript_text, height=400)
 
-    # RIGHT: Summary + Export
-    with col2:
-        st.subheader("📝 Summary")
-        st.markdown(final_summary)
+        with col2:
+            st.subheader("📝 Summary")
+            st.markdown(final_summary)
+            pdf_file = export_pdf(final_summary, metadata["title"] if metadata else "summary")
+            with open(pdf_file, "rb") as f:
+                st.download_button("📥 Download PDF", f, file_name="summary.pdf")
 
-        pdf_file = export_pdf(final_summary, metadata["title"] if metadata else "summary")
-        with open(pdf_file, "rb") as f:
-            st.download_button("📥 Download PDF", f, file_name="summary.pdf")
+# --- Tab 2: History ---
+with tab2:
+    st.subheader("📚 Saved Summaries")
+    summaries = list_summaries(limit=20)
+    if summaries:
+        for record in summaries:
+            with st.expander(f"{record.title} ({record.channel}) — {record.duration}"):
+                st.markdown(record.summary)
+                st.caption(f"Saved on {record.created_at}")
+    else:
+        st.info("No summaries saved yet.")
