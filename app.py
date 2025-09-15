@@ -42,23 +42,30 @@ load_css("style.css")
 # ---------------------------
 # DATABASE SETUP
 # ---------------------------
-engine = create_engine(DATABASE_URL, echo=False)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+from sqlalchemy import create_engine, Column, Integer, String, Text, TIMESTAMP, func
+from sqlalchemy.orm import declarative_base, sessionmaker
+
 Base = declarative_base()
 
 class Summary(Base):
     __tablename__ = "summaries"
-    id = Column(Integer, primary_key=True, index=True)
-    video_id = Column(String, unique=True, index=True, nullable=False)
-    title = Column(String)
-    channel = Column(String)
-    duration = Column(String)
+
+    id = Column(Integer, primary_key=True)
+    video_id = Column(String(50), nullable=False)
+    title = Column(Text, nullable=False)
+    channel = Column(Text)
+    duration = Column(Text)
     transcript = Column(Text)
     summary = Column(Text)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
-def init_db():
-    Base.metadata.create_all(bind=engine)
+# Database connection
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://summarizer:secret12345@localhost:5432/youtube_summarizer")
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(bind=engine)
+
+# ✅ Auto-create tables if they don’t exist
+Base.metadata.create_all(engine)
 
 def save_summary(video_id, metadata, transcript, summary):
     session = SessionLocal()
