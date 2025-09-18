@@ -15,6 +15,8 @@ import yt_dlp
 from sqlalchemy import create_engine, Column, Integer, String, Text, TIMESTAMP, func
 from sqlalchemy.orm import declarative_base, sessionmaker
 from openai import APIConnectionError, APIStatusError
+from pydub import AudioSegment
+import math
 
 
 # ---------------------------
@@ -173,6 +175,39 @@ def download_audio(video_url: str, filename: str):
         ydl.download([video_url])
     return filename if filename.endswith(".mp3") else filename + ".mp3"
 
+def split_audio(file_path, chunk_length_ms=5*60*1000):  # default 5 minutes
+    """Split audio into smaller chunks to stay under Whisper API 25 MB limit."""
+    audio = AudioSegment.from_file(file_path, format="mp3")
+    chunks = []
+    num_chunks = math.ceil(len(audio) / chunk_length_ms)
+
+    for i in range(num_chunks):
+        start = i * chunk_length_ms
+        end = min((i+1) * chunk_length_ms, len(audio))
+        chunk = audio[start:end]
+        out_path = f"{file_path}_part{i}.mp3"
+        chunk.export(out_path, format="mp3")
+        chunks.append(out_path)
+
+    return chunks
+
+
+def transcribe_audio_whisper_large(filepath: str):
+    """Handle large audio files by chunking before Whisper transcription."""
+    transcripts = []
+    chunks = split_audio(filepath)
+
+    for chunk in chunks:
+        with open(chunk, "rb") as audio_file:
+            result = openai.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file
+            )
+        transcripts.append(result.text)
+
+    return " ".join(transcripts)
+
+
 def transcribe_audio_whisper(filepath: str):
     with open(filepath, "rb") as audio_file:
         result = openai.audio.transcriptions.create(model="whisper-1", file=audio_file)
@@ -236,7 +271,7 @@ def process_video(url: str):
             with st.spinner("🎙️ Transcribing audio with Whisper..."):
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
                     audio_path = download_audio(url, tmp.name)
-                    full_text = transcribe_audio_whisper(audio_path)
+                    full_text = transcribe_audio_whisper_large(audio_path)
                     if not full_text:
                         st.error("❌ Could not transcribe the audio. Please try again.")
                         return None, None, None
