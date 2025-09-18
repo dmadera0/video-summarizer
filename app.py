@@ -14,6 +14,8 @@ import isodate
 import yt_dlp
 from sqlalchemy import create_engine, Column, Integer, String, Text, TIMESTAMP, func
 from sqlalchemy.orm import declarative_base, sessionmaker
+from openai import APIConnectionError, APIStatusError
+
 
 # ---------------------------
 # CONFIG
@@ -221,30 +223,50 @@ def export_pdf(summary_text, title="YouTube Summary"):
 # ---------------------------
 @st.cache_data(show_spinner=False)
 def process_video(url: str):
-    video_id = get_video_id(url)
+    """Full pipeline: fetch metadata, transcript, and generate summary with error handling."""
+    try:
+        video_id = get_video_id(url)
+        metadata = get_video_metadata(video_id)
 
-    cached = get_summary(video_id)
-    if cached:
-        return (
-            {"title": cached["title"], "channel": cached["channel"], "duration": cached["duration"]},
-            [{"start": 0, "text": cached["transcript"]}],
-            cached["summary"]
-        )
+        # Try YouTube transcript
+        transcript = fetch_transcript(video_id)
 
-    metadata = get_video_metadata(video_id)
-    transcript = fetch_transcript(video_id)
-    if not transcript:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-            audio_path = download_audio(url, tmp.name)
-            full_text = transcribe_audio_whisper(audio_path)
-            transcript = [{"start": 0, "text": full_text}]
+        # Fall back to Whisper if transcript unavailable
+        if not transcript:
+            with st.spinner("🎙️ Transcribing audio with Whisper..."):
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
+                    audio_path = download_audio(url, tmp.name)
+                    full_text = transcribe_audio_whisper(audio_path)
+                    if not full_text:
+                        st.error("❌ Could not transcribe the audio. Please try again.")
+                        return None, None, None
+                    transcript = [{"start": 0, "text": full_text}]
 
-    chunks = chunk_transcript(transcript)
-    all_summaries = [summarize_chunk(chunk, ts) for ts, chunk in chunks]
-    final_summary = "\n\n".join(all_summaries)
+        # Summarization
+        with st.spinner("📝 Processing transcript into chunks and generating summary..."):
+            chunks = chunk_transcript(transcript)
+            all_summaries = []
+            for timestamp, chunk in chunks:
+                summary = summarize_chunk(chunk, timestamp)
+                all_summaries.append(summary)
 
-    save_summary(video_id, metadata, transcript, final_summary)
-    return metadata, transcript, final_summary
+            final_summary = "\n\n".join(all_summaries)
+
+        # Save to Postgres if available
+        if metadata and transcript and final_summary:
+            save_summary(video_id, metadata, transcript, final_summary)
+
+        return metadata, transcript, final_summary
+
+    except APIConnectionError:
+        st.error("⚠️ Connection error: Could not reach OpenAI servers. Disable your VPN or check internet connection.")
+        return None, None, None
+    except APIStatusError as e:
+        st.error(f"⚠️ API error: {e}")
+        return None, None, None
+    except Exception as e:
+        st.error(f"⚠️ Unexpected error: {e}")
+        return None, None, None
 
 # ---------------------------
 # STREAMLIT UI
