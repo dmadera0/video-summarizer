@@ -1,0 +1,6 @@
+[theme]
+primaryColor="#FF0000"            # YouTube red
+backgroundColor="#F9F9F9"         # light gray
+secondaryBackgroundColor="#FFFFFF" # white for containers
+textColor="#222222"
+font="sans serif"

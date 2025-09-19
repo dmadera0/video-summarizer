@@ -306,9 +306,13 @@ def process_video(url: str):
 # ---------------------------
 # STREAMLIT UI
 # ---------------------------
-st.markdown('<div class="top-bar"> </div>', unsafe_allow_html=True)
-st.markdown("<h1 style='text-align: center;'>🎥 YouTube Summarizer</h1>", unsafe_allow_html=True)
-st.write("<p style='text-align: center;'>Paste a YouTube link to get transcript + AI summary with timestamps.</p>", unsafe_allow_html=True)
+st.markdown("""
+<div style="background:#FF0000; padding:1rem; text-align:center; color:white; border-radius:8px;">
+    <h1 style="margin:0;">🎥 YouTube Summarizer</h1>
+    <p style="margin:0; font-size:1.1rem;">Paste a YouTube link to get transcript + AI summary with timestamps.</p>
+</div>
+""", unsafe_allow_html=True)
+
 
 tab1, tab2 = st.tabs(["▶️ Summarize", "📚 History"])
 
@@ -321,18 +325,33 @@ with tab1:
 
         col1, col2 = st.columns([1, 1])
         with col1:
-            st.subheader("🎬 Video Info")
+            with st.container():
+                st.markdown("""
+                <div style="background:#fff; border:1px solid #ddd; border-radius:10px; padding:1rem; margin-bottom:1rem;">
+                    <h3>🎬 Video Info</h3>
+                </div>
+                """, unsafe_allow_html=True)
             st.write(f"**Title:** {metadata['title']}")
             st.write(f"**Channel:** {metadata['channel']}")
             st.write(f"**Length:** {metadata['duration']}")
             st.subheader("📜 Full Transcript")
             with st.expander("Click to view transcript", expanded=False):
                 transcript_text = " ".join([t["text"] for t in transcript])
-                st.text_area("Transcript", transcript_text, height=400)
+                st.markdown(f"""
+                <div style="max-height:400px; overflow-y:auto; background:#f5f5f5; padding:1rem; border-radius:8px; border:1px solid #ddd;">
+                    {transcript_text}
+                </div>
+                """, unsafe_allow_html=True)
+
 
         with col2:
-            st.subheader("📝 Summary")
+            st.markdown("""
+            <div style="background:#fff; border:1px solid #ddd; border-radius:10px; padding:1rem; margin-bottom:1rem;">
+                <h3>📝 Summary</h3>
+            </div>
+            """, unsafe_allow_html=True)
             st.markdown(final_summary)
+
             pdf_file = export_pdf(final_summary, metadata["title"] if metadata else "summary")
             with open(pdf_file, "rb") as f:
                 st.download_button("📥 Download PDF", f, file_name="summary.pdf")
