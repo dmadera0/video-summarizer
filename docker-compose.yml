@@ -1,0 +1,30 @@
+version: "3.8"
+services:
+  db:
+    image: postgres:15
+    container_name: video_db
+    restart: always
+    environment:
+      POSTGRES_USER: summarizer
+      POSTGRES_PASSWORD: secret12345
+      POSTGRES_DB: youtube_summarizer
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    container_name: video_app
+    restart: always
+    ports:
+      - "8501:8501"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://summarizer:secret12345@db:5432/youtube_summarizer
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
