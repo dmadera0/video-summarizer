@@ -18,6 +18,7 @@ from openai import APIConnectionError, APIStatusError
 from pydub import AudioSegment
 import math
 import unicodedata
+from pytube import YouTube
 
 
 # ---------------------------
@@ -150,6 +151,14 @@ def get_video_metadata(video_id: str):
     duration_iso = item["contentDetails"]["duration"]
     duration = isodate.parse_duration(duration_iso).total_seconds()
     return {"title": title, "channel": channel, "duration": str(timedelta(seconds=int(duration)))}
+
+def get_video_metadata(url):
+    try:
+        yt = YouTube(url)
+        return {"title": yt.title, "description": yt.description}
+    except Exception as e:
+        st.error(f"❌ Failed to fetch metadata: {e}")
+        return None
 
 def fetch_transcript(video_id: str):
     try:
@@ -343,6 +352,10 @@ with tab1:
                 </div>
                 """, unsafe_allow_html=True)
             st.write(f"**Title:** {metadata['title']}")
+            if metadata and "title" in metadata:
+                st.write(f"**Title:** {metadata['title']}")
+            else:
+                st.error("❌ Could not fetch YouTube metadata. The video may be blocked or rate-limited. Try again later.")
             st.write(f"**Channel:** {metadata['channel']}")
             st.write(f"**Length:** {metadata['duration']}")
             st.subheader("📜 Full Transcript")
