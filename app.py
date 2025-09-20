@@ -17,6 +17,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from openai import APIConnectionError, APIStatusError
 from pydub import AudioSegment
 import math
+import unicodedata
 
 
 # ---------------------------
@@ -244,11 +245,21 @@ def summarize_chunk(text, timestamp):
     )
     return response.choices[0].message.content
 
+def clean_text(text: str) -> str:
+    """
+    Normalize text so FPDF doesn't crash on Unicode characters.
+    Converts fancy quotes, dashes, bullets, etc. into plain ASCII.
+    """
+    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+
 def export_pdf(summary_text, title="YouTube Summary"):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
-    pdf.multi_cell(0, 10, summary_text)
+
+    # ✅ Clean the text before writing
+    pdf.multi_cell(0, 10, clean_text(summary_text))
+
     temp_path = os.path.join(tempfile.gettempdir(), "summary.pdf")
     pdf.output(temp_path)
     return temp_path

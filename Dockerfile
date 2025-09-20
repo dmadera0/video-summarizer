@@ -7,9 +7,9 @@ FROM python:3.11-slim
 # 2. Install system packages
 # -------------------------
 RUN apt-get update && apt-get install -y \
-    ffmpeg \               # needed by pydub/yt-dlp
-    libpq-dev \            # needed for psycopg2 + Postgres
-    gcc \                  # compiler for some Python packages
+    ffmpeg \
+    libpq-dev \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # -------------------------

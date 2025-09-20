@@ -30,7 +30,6 @@ sqlalchemy
 
 
 streamlit==1.37.0
-openai==1.40.0
 python-dotenv==1.0.1
 youtube-transcript-api==0.6.2
 yt-dlp==2024.11.18
