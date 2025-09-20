@@ -352,12 +352,18 @@ with tab1:
                 </div>
                 """, unsafe_allow_html=True)
             
-            if metadata and "title" in metadata:
-                st.write(f"**Title:** {metadata['title']}")
+            # if metadata and "title" in metadata:
+            #     st.write(f"**Title:** {metadata['title']}")
+            # else:
+            #     st.error("❌ Could not fetch YouTube metadata. The video may be blocked or rate-limited. Try again later.")
+            # st.write(f"**Channel:** {metadata['channel']}")
+            # st.write(f"**Length:** {metadata['duration']}")
+            if metadata:
+                st.write(f"**Title:** {metadata.get('title', 'N/A')}")
+                st.write(f"**Channel:** {metadata.get('channel', 'N/A')}")
+                st.write(f"**Length:** {metadata.get('duration', 'N/A')}")
             else:
                 st.error("❌ Could not fetch YouTube metadata. The video may be blocked or rate-limited. Try again later.")
-            st.write(f"**Channel:** {metadata['channel']}")
-            st.write(f"**Length:** {metadata['duration']}")
             st.subheader("📜 Full Transcript")
             with st.expander("Click to view transcript", expanded=False):
                 transcript_text = " ".join([t["text"] for t in transcript])
