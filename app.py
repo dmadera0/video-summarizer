@@ -351,7 +351,7 @@ with tab1:
                     <h3>🎬 Video Info</h3>
                 </div>
                 """, unsafe_allow_html=True)
-            st.write(f"**Title:** {metadata['title']}")
+            
             if metadata and "title" in metadata:
                 st.write(f"**Title:** {metadata['title']}")
             else:
