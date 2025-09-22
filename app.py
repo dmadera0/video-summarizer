@@ -17,8 +17,6 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from openai import APIConnectionError, APIStatusError
 from pydub import AudioSegment
 import math
-import unicodedata
-from pytube import YouTube
 
 
 # ---------------------------
@@ -152,14 +150,6 @@ def get_video_metadata(video_id: str):
     duration = isodate.parse_duration(duration_iso).total_seconds()
     return {"title": title, "channel": channel, "duration": str(timedelta(seconds=int(duration)))}
 
-def get_video_metadata(url):
-    try:
-        yt = YouTube(url)
-        return {"title": yt.title, "description": yt.description}
-    except Exception as e:
-        st.error(f"❌ Failed to fetch metadata: {e}")
-        return None
-
 def fetch_transcript(video_id: str):
     try:
         return YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
@@ -254,21 +244,11 @@ def summarize_chunk(text, timestamp):
     )
     return response.choices[0].message.content
 
-def clean_text(text: str) -> str:
-    """
-    Normalize text so FPDF doesn't crash on Unicode characters.
-    Converts fancy quotes, dashes, bullets, etc. into plain ASCII.
-    """
-    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
-
 def export_pdf(summary_text, title="YouTube Summary"):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
-
-    # ✅ Clean the text before writing
-    pdf.multi_cell(0, 10, clean_text(summary_text))
-
+    pdf.multi_cell(0, 10, summary_text)
     temp_path = os.path.join(tempfile.gettempdir(), "summary.pdf")
     pdf.output(temp_path)
     return temp_path
@@ -351,19 +331,9 @@ with tab1:
                     <h3>🎬 Video Info</h3>
                 </div>
                 """, unsafe_allow_html=True)
-            
-            if metadata and "title" in metadata:
-            #     st.write(f"**Title:** {metadata['title']}")
-            # else:
-            #     st.error("❌ Could not fetch YouTube metadata. The video may be blocked or rate-limited. Try again later.")
-            # st.write(f"**Channel:** {metadata['channel']}")
-            # st.write(f"**Length:** {metadata['duration']}")
-            # if metadata:
-                st.write(f"**Title:** {metadata.get('title', 'N/A')}")
-                st.write(f"**Channel:** {metadata.get('channel', 'N/A')}")
-                st.write(f"**Length:** {metadata.get('duration', 'N/A')}")
-            else:
-                st.error("❌ Could not fetch YouTube metadata. The video may be blocked or rate-limited. Try again later.")
+            st.write(f"**Title:** {metadata['title']}")
+            st.write(f"**Channel:** {metadata['channel']}")
+            st.write(f"**Length:** {metadata['duration']}")
             st.subheader("📜 Full Transcript")
             with st.expander("Click to view transcript", expanded=False):
                 transcript_text = " ".join([t["text"] for t in transcript])
